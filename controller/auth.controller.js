@@ -31,8 +31,6 @@ export const signUp = async (req, res, next) => {
       [{ name, email, password: hashPassword }],
       { session }
     );
-    // await newUsers.save({ session });
-
     const token = jwt.sign({ userId: newUsers[0]._id }, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN
     });
@@ -52,6 +50,8 @@ export const signUp = async (req, res, next) => {
     });
   } catch (error) {
     console.log("❌ create user error in signup controller 🔴", error);
+    error.statusCode = 500;
+    // only aboer transaction if something went wrong
     if (session.inTransaction()) {
       await session.abortTransaction();
     }
@@ -60,10 +60,47 @@ export const signUp = async (req, res, next) => {
   }
 };
 
-export const signIn = async (req, re, next) => {
+export const signIn = async (req, res, next) => {
   // implement signIn logic
+try {
+    const {email, password} = req.body;
+
+    const user = await User.findOne({email});
+
+    if(!user){
+        const error = new Error ('User not found');
+        error.statusCode = 404;
+        next(error);
+        return;
+    }
+
+    const isPasswordCorrect = await bcrypt.compare(password, user.password);
+
+    if(!isPasswordCorrect){
+        const error = new Error ('Password is Incorrect ❌');
+        error.statusCode = 401;
+        next(error);
+        return;
+    }
+
+    const token = jwt.sign({userId: user._id}, JWT_SECRET, {
+        expiresIn: JWT_EXPIRES_IN
+    });
+
+    res.status(200).json({
+        success: true,
+        status: 200,
+        message: "User logged in successfully",
+        data: {user, token}
+    });
+    
+    
+} catch (error) {
+    next(error);
+}
+
 };
 
-export const signOut = async (req, re, next) => {
+export const signOut = async (req, res, next) => {
   // implement signOut logic
 };
