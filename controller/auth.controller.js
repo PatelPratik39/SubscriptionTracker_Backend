@@ -62,43 +62,54 @@ export const signUp = async (req, res, next) => {
 
 export const signIn = async (req, res, next) => {
   // implement signIn logic
-try {
-    const {email, password} = req.body;
+  try {
+    const { email, password, ...rest } = req.body;
 
-    const user = await User.findOne({email});
+    // if in request body conatins email and password, it will send and error
+    if(Object.keys(rest).length > 0){
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request ❌ Only email and password are allowed."
+      });
+    }
 
-    if(!user){
-        const error = new Error ('User not found');
-        error.statusCode = 404;
-        next(error);
-        return;
+    if(!email || !password){
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required ❌"
+      })
+    }
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      const error = new Error("User not found");
+      error.statusCode = 404;
+      next(error);
+      return;
     }
 
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
-    if(!isPasswordCorrect){
-        const error = new Error ('Password is Incorrect ❌');
-        error.statusCode = 401;
-        next(error);
-        return;
+    if (!isPasswordCorrect) {
+      const error = new Error("Password is Incorrect ❌");
+      error.statusCode = 401;
+      next(error);
+      return;
     }
 
-    const token = jwt.sign({userId: user._id}, JWT_SECRET, {
-        expiresIn: JWT_EXPIRES_IN
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+      expiresIn: JWT_EXPIRES_IN
     });
 
     res.status(200).json({
-        success: true,
-        status: 200,
-        message: "User logged in successfully",
-        data: {user, token}
+      success: true,
+      status: 200,
+      message: "User logged in successfully",
+      data: { user, token }
     });
-    
-    
-} catch (error) {
+  } catch (error) {
     next(error);
-}
-
+  }
 };
 
 export const signOut = async (req, res, next) => {
