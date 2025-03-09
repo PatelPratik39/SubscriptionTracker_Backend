@@ -2,6 +2,57 @@ import mongoose from "mongoose";
 import User from "../model/user.model.js";
 import bcrypt from "bcryptjs";
 
+
+
+
+
+/** 
+ * ✅ CREATE New User 
+ */
+export const createUser = async (req, res, next) => {
+    try {
+        const { name, email, password } = req.body;
+
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                error: "All fields (name, email, password) are required ❌"
+            });
+        }
+
+        // Check if user already exists
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(409).json({
+                success: false,
+                error: "User already exists ❌"
+            });
+        }
+
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Create user
+        const newUser = await User.create({
+            name,
+            email,
+            password: hashedPassword
+        });
+
+        console.log(`✅ [USER CREATED] ID: ${newUser._id}, Email: ${email}`);
+
+        res.status(201).json({
+            success: true,
+            message: "User created successfully ✅",
+            data: newUser
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
 /**
  * 
 Get all users
