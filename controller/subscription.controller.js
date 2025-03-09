@@ -219,9 +219,10 @@ export const cancelSubscription = async (req, res, next) => {
 export const renewSubscription = async (req, res, next) => {
     try {
         const today = new Date();
-        const upcommingSubscription = await Subscription.findById({
-            renewDate: { $gte: today },
-        }).sort({ renewDate: 1 });
+        const upcommingSubscription = await Subscription.find({
+          renewalDate: { $gte: today }
+        }).sort({ renewalDate: 1 });
+
         if (!upcommingSubscription) {
             return res.status(404).json({
                 success: false,
