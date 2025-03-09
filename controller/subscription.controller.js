@@ -32,3 +32,25 @@ export const createSubscription = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getUserSubscriptions = async (req, res, next) => {
+    try {
+        if(req.user._id.toString() !== req.params.id){
+            const error = new Error('You are not authorized to access this resource');
+            error.status = 401;
+            throw error;
+        }
+        const subscriptions = await Subscription.find({user: req.params.id});
+        console.log(
+          `✅ [SUBSCRIPTION CREATED] ID: ${subscriptions._id}, Name: ${subscriptions.name}, User: ${req.user._id}`
+        );
+        res.status(200).json({
+            success: true,
+            status: 200,
+            data: subscriptions
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+}
