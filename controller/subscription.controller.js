@@ -1,3 +1,8 @@
+import dotenv from "dotenv";
+dotenv.config();
+import { SERVER_URL } from "../config/env.js";
+
+import { workflowClient } from "../config/upstash.js";
 import Subscription from "../model/subscription.model.js";
 
 /**
@@ -9,7 +14,7 @@ import Subscription from "../model/subscription.model.js";
 export const getAllSubscriptions = async (req, res, next) => {
   try {
     const subscriptions = await Subscription.find();
-    if(!subscriptions){
+    if (!subscriptions) {
       return res.status(404).json({
         success: false,
         message: "Subscriptions not found ❌"
@@ -17,7 +22,7 @@ export const getAllSubscriptions = async (req, res, next) => {
     }
     console.log(
       `✅ [SUBSCRIPTION CREATED] ID: ${subscriptions._id}, Name: ${subscriptions.name}, User: ${req.user._id}`
-    )
+    );
     res.status(200).json({
       success: true,
       status: 200,
@@ -36,7 +41,7 @@ export const getAllSubscriptions = async (req, res, next) => {
 export const getUserSubscriptionById = async (req, res, next) => {
   try {
     const subscription = await Subscription.findById(req.params.id);
-    if(!subscription){
+    if (!subscription) {
       return res.status(404).json({
         success: false,
         message: "Subscription not found ❌"
@@ -44,7 +49,7 @@ export const getUserSubscriptionById = async (req, res, next) => {
     }
     console.log(
       `✅ [SUBSCRIPTION CREATED] ID: ${subscription._id}, Name: ${subscription.name}, User: ${req.user._id}`
-    )
+    );
     res.status(200).json({
       success: true,
       status: 200,
@@ -55,10 +60,28 @@ export const getUserSubscriptionById = async (req, res, next) => {
   }
 };
 
+/**
+ * @route POST /api/v1/subscription/
+ * @desc Create a new subscription
+ * @access Private (Requires authentication)
+ */
+
 export const createSubscription = async (req, res, next) => {
   try {
     console.log("📌 [CREATE SUBSCRIPTION] Incoming request:", req.body);
 
+     console.log("✅ SERVER_URL:", SERVER_URL);
+
+
+    // Validate user authentication
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: User authentication required ❌"
+      });
+    }
+
+    // Create the subscription
     const subscription = await Subscription.create({
       ...req.body,
       user: req.user._id
@@ -68,6 +91,26 @@ export const createSubscription = async (req, res, next) => {
       `✅ [SUBSCRIPTION CREATED] ID: ${subscription._id}, Name: ${subscription.name}, User: ${req.user._id}`
     );
 
+    try {
+      // Trigger the workflow after successful subscription creation
+      const { workflowRunID } = await workflowClient.trigger({
+        url: `${SERVER_URL}/api/v1/workflows/subscription/reminder`,
+        body: { subscriptionId: subscription._id },
+        headers: { "content-type": "application/json" ,
+        "Authorization": `Bearer ${process.env.UPSTASH_QSTASH_TOKEN}`,
+        },
+        retries: 0
+      });
+
+      if (!workflowRunID) {
+        console.warn("⚠️ [WORKFLOW WARNING] No workflowRunID returned!");
+      } else {
+        console.log(`✅ [WORKFLOW TRIGGERED] Run ID: ${workflowRunID}`);
+      }
+    } catch (workflowError) {
+      console.error("❌ [WORKFLOW ERROR]:", workflowError);
+    }
+
     res.status(201).json({
       success: true,
       status: 201,
@@ -76,15 +119,7 @@ export const createSubscription = async (req, res, next) => {
     });
   } catch (error) {
     console.error("❌ [SUBSCRIPTION CREATION ERROR]:", error.message);
-
-    res.status(400).json({
-      success: false,
-      status: 400,
-      error:
-        error.message || "Something went wrong while creating the subscription"
-    });
-
-    next(error);
+    next(error); // ✅ Do not send `res.json()` again here
   }
 };
 
@@ -101,7 +136,7 @@ export const updateSubscription = async (req, res, next) => {
       req.body,
       { new: true, runValidators: true }
     );
-    if(!updateSubscription){
+    if (!updateSubscription) {
       return res.status(404).json({
         success: false,
         message: "Subscription not found ❌"
@@ -115,12 +150,11 @@ export const updateSubscription = async (req, res, next) => {
       status: 200,
       message: "Subscription updated successfully ✅",
       data: updateSubscription
-      })    
+    });
   } catch (error) {
     next(error);
   }
-}
-
+};
 
 /**
  * @route DELETE /api/v1/subscription/:id
@@ -129,27 +163,34 @@ export const updateSubscription = async (req, res, next) => {
  */
 
 export const deleteSubscription = async (req, res, next) => {
-    try {
-        const deleteSubscription = await Subscription.findByIdAndDelete(req.params.id);
-        if(!deleteSubscription){
-            return res.status(404).json({
-                success: false,
-                message: "Subscription not found ❌"
-            });
-        }
-        console.log(
-            `✅ [SUBSCRIPTION DELETED] ID: ${deleteSubscription._id}, Name: ${deleteSubscription.name}, User: ${req.user._id}`
-        );
-        res.status(200).json({
-            success: true,
-            status: 200,
-            message: "Subscription deleted successfully ✅",
-            data: deleteSubscription
-            })
-    } catch (error) {
-        next(error);
+  try {
+    const deleteSubscription = await Subscription.findByIdAndDelete(
+      req.params.id
+    );
+    if (!deleteSubscription) {
+      return res.status(404).json({
+        success: false,
+        message: "Subscription not found ❌"
+      });
     }
-}
+    console.log(
+      `✅ [SUBSCRIPTION DELETED] ID: ${deleteSubscription._id}, Name: ${deleteSubscription.name}, User: ${req.user._id}`
+    );
+    res.status(200).json({
+      success: true,
+      status: 200,
+      message: "Subscription deleted successfully ✅",
+      data: deleteSubscription
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+/**
+ * @route GET /api/v1/subscription/:id
+ * @desc Get single subscription details
+ * @access Private (Requires authentication)
+ */
 
 export const getUserSubscriptions = async (req, res, next) => {
   try {
@@ -178,37 +219,33 @@ export const getUserSubscriptions = async (req, res, next) => {
  * @access Private (Requires authentication)
  */
 
-
 export const cancelSubscription = async (req, res, next) => {
-  try{
+  try {
     const subscription = await Subscription.findById(req.params.id);
 
-    if(!subscription){
-        return res.status(404).json({
-            success: false,
-            message: "Subscription not found ❌"
-        });
+    if (!subscription) {
+      return res.status(404).json({
+        success: false,
+        message: "Subscription not found ❌"
+      });
     }
     // Set status to cancelled
     subscription.status = "cancelled";
     await subscription.save();
     console.log(
-        `✅ [SUBSCRIPTION CANCELLED] ID: ${subscription._id}, Name: ${subscription.name}, User: ${req.user._id}`
+      `✅ [SUBSCRIPTION CANCELLED] ID: ${subscription._id}, Name: ${subscription.name}, User: ${req.user._id}`
     );
-    
+
     res.status(200).json({
-        success: true,
-        status: 200,
-        message: "Subscription cancelled successfully ✅",
-        data: subscription
+      success: true,
+      status: 200,
+      message: "Subscription cancelled successfully ✅",
+      data: subscription
     });
-
-
   } catch (error) {
     next(error);
   }
 };
-
 
 /**
  * @route PUT /api/v1/subscription/:id/cancel
@@ -217,28 +254,28 @@ export const cancelSubscription = async (req, res, next) => {
  */
 
 export const renewSubscription = async (req, res, next) => {
-    try {
-        const today = new Date();
-        const upcommingSubscription = await Subscription.find({
-          renewalDate: { $gte: today }
-        }).sort({ renewalDate: 1 });
+  try {
+    const today = new Date();
+    const upcommingSubscription = await Subscription.find({
+      renewalDate: { $gte: today }
+    }).sort({ renewalDate: 1 });
 
-        if (!upcommingSubscription) {
-            return res.status(404).json({
-                success: false,
-                message: "No upcomming subscription found",
-            });
-        }
-        console.log(
-            `✅ [SUBSCRIPTION RENEWED] ID: ${upcommingSubscription._id}, Name: ${upcommingSubscription.name}, User: ${req.user._id}`
-        );
-        res.status(200).json({
-          success: true,
-          status: 200,
-          message: "Upcoming subscription renewaed successfully ✅",
-          data: upcommingSubscription
-        });
-    } catch (error) {
-        next(error);
+    if (!upcommingSubscription) {
+      return res.status(404).json({
+        success: false,
+        message: "No upcomming subscription found"
+      });
     }
-}
+    console.log(
+      `✅ [SUBSCRIPTION RENEWED] ID: ${upcommingSubscription._id}, Name: ${upcommingSubscription.name}, User: ${req.user._id}`
+    );
+    res.status(200).json({
+      success: true,
+      status: 200,
+      message: "Upcoming subscription renewaed successfully ✅",
+      data: upcommingSubscription
+    });
+  } catch (error) {
+    next(error);
+  }
+};
