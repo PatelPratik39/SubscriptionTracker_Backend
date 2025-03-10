@@ -69,10 +69,6 @@ export const getUserSubscriptionById = async (req, res, next) => {
 export const createSubscription = async (req, res, next) => {
   try {
     console.log("📌 [CREATE SUBSCRIPTION] Incoming request:", req.body);
-
-     console.log("✅ SERVER_URL:", SERVER_URL);
-
-
     // Validate user authentication
     if (!req.user || !req.user._id) {
       return res.status(401).json({
@@ -91,32 +87,46 @@ export const createSubscription = async (req, res, next) => {
       `✅ [SUBSCRIPTION CREATED] ID: ${subscription._id}, Name: ${subscription.name}, User: ${req.user._id}`
     );
 
-    try {
-      // Trigger the workflow after successful subscription creation
-      const { workflowRunID } = await workflowClient.trigger({
-        url: `${SERVER_URL}/api/v1/workflows/subscription/reminder`,
-        body: { subscriptionId: subscription._id },
-        headers: { "content-type": "application/json" ,
-        "Authorization": `Bearer ${process.env.UPSTASH_QSTASH_TOKEN}`,
-        },
-        retries: 0
-      });
+   try {
+     console.log(
+       "🚀 [WORKFLOW TRIGGER] Sending request to:",
+       `${SERVER_URL}/api/v1/workflows/subscription/reminder`
+     );
 
-      if (!workflowRunID) {
-        console.warn("⚠️ [WORKFLOW WARNING] No workflowRunID returned!");
-      } else {
-        console.log(`✅ [WORKFLOW TRIGGERED] Run ID: ${workflowRunID}`);
-      }
-    } catch (workflowError) {
-      console.error("❌ [WORKFLOW ERROR]:", workflowError);
-    }
+     const response = await workflowClient.trigger({
+       url: `${SERVER_URL}/api/v1/workflows/subscription/reminder`,
+       body: JSON.stringify({ subscriptionId: subscription._id }),
+       headers: {
+         "content-type": "application/json",
+         Authorization: `Bearer ${process.env.UPSTASH_QSTASH_TOKEN}`
+       },
+       retries: 0
+     });
 
-    res.status(201).json({
-      success: true,
-      status: 201,
-      message: "Subscription created successfully ✅",
-      data: subscription
-    });
+     console.log("✅ [WORKFLOW RESPONSE]:", response);
+
+     // Extract workflowRunID from response
+     const workflowRunID = response.workflowRunId || null;
+
+     if (!workflowRunID) {
+       console.warn("⚠️ [WORKFLOW WARNING] No workflowRunID returned!");
+     } else {
+       console.log(`✅ [WORKFLOW TRIGGERED] Run ID: ${workflowRunID}`);
+     }
+
+     // 🔥 ✅ Include workflowRunID in the response sent to Postman
+     res.status(201).json({
+       success: true,
+       status: 201,
+       message: "Subscription created successfully ✅",
+       data: {
+         subscription,
+         workflowRunID // Include the generated workflowRunID in response
+       }
+     });
+   } catch (workflowError) {
+     console.error("❌ [WORKFLOW ERROR]:", workflowError);
+   }
   } catch (error) {
     console.error("❌ [SUBSCRIPTION CREATION ERROR]:", error.message);
     next(error); // ✅ Do not send `res.json()` again here
